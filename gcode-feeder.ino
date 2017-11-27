@@ -49,7 +49,8 @@ String filenames[MAX_FILES];
 String homeFilename = "";
 
 //settings for continuous pattern switches
-const int CONTINUE_PIN = 2; //pin for continous switch
+const int CONTINUE_PIN = 2;     // pin for continous switch
+boolean abortPattern = false;   // Used to abort an in progress pattern
 
 // Aliases for serial ports
 #define DebugSerial Serial
@@ -230,6 +231,21 @@ String getSerial() {
     return inLine;
 }
 
+// Checks the button, and determines if there was a button press.
+void checkButton() {
+    // Since we are triggering on a false to true, set this to true to avoid the first trigger.
+    static boolean prevButton = true;
+
+    // Read the button
+    boolean buttomPressed = (LOW == digitalRead(CONTINUE_PIN));
+
+    if (buttonPressed && !prevButton) {
+        // The button was just pressed
+            abortPattern = true;
+    }
+    prevButton = buttomPressed;
+}
+
 void sendGcode() {
     // READING GCODE FILE AND SEND ON SERIAL PORT TO GRBL
     // START GCODE SENDING PROTOCOL ON SERIAL 1
@@ -243,6 +259,14 @@ void sendGcode() {
     if(currentFile) {
         // until the file's end
         while(currentFile.available()) {
+
+            checkButton();
+            if (abortPattern) {
+                // The user pressed the button!
+                DebugSerial.println("Pattern Aborted");
+                abortPattern = false;
+                break;
+            }
 
             line = readLine(currentFile);        // read line in gcode file
             DebugSerial.print(line);        // send to serials
