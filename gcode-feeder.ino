@@ -51,6 +51,7 @@ String homeFilename = "";
 //settings for continuous pattern switches
 const int CONTINUE_PIN = 2;     // pin for continous switch
 boolean abortPattern = false;   // Used to abort an in progress pattern
+const unsigned long DEBOUNCE_TIME_MS = 250;
 
 // Aliases for serial ports
 #define DebugSerial Serial
@@ -214,6 +215,7 @@ void emptySerialBuf() {
 // Argument serialNum for Serial number
 void waitSerial() {
     while(!GrblSerial.available()){
+        checkButton(); // Check the button while we are waiting
         delay(1);
     }
 }
@@ -226,24 +228,63 @@ String getSerial() {
     String inLine = "";
     while(GrblSerial.available()) {
         inLine += (char)GrblSerial.read();
+        checkButton(); // Check the button while we are waiting
         delay(2);
     }
     return inLine;
 }
 
 // Checks the button, and determines if there was a button press.
+//
+// OK, this might be a little confusing, so here's how it (is supposed to) work.
+//
+// This function needs to be checked frequently, as often as possible, almost.
+//
+// This function will read the state of the button. If it doesn't match our current state, then it will
+// add the time since the last check to the counter. If the counter goes over DEBOUNCE_TIME_MS, then
+// The state change happens.
+//
+// If the state change goes from false to true, then we just pressed the button.
+//
+// This debounce is two way, so that if we have the switch in place, and it registers a false
+// momentarily, it won't also trigger an abort.
+//
 void checkButton() {
+    // Static variables (local, but persistent).
+    static int debounceCounter = 0;
+    static unsigned long prevTime = millis();
+
     // Since we are triggering on a false to true, set this to true to avoid the first trigger.
-    static boolean prevButton = true;
+    static boolean buttonState = true;
+
+    // Save the dt right now.
+    unsigned long deltaTime_ms = millis() - prevTime;
+    // Set up for the next dt.
+    prevTime += deltaTime_ms;
 
     // Read the button
-    boolean buttomPressed = (LOW == digitalRead(CONTINUE_PIN));
+    boolean buttonPressed = (LOW == digitalRead(CONTINUE_PIN));
 
-    if (buttonPressed && !prevButton) {
-        // The button was just pressed
-            abortPattern = true;
+    if ((buttonPressed != buttonState) && debounceCounter < DEBOUNCE_TIME_MS) {
+        // The button is changing, but we haven't triggered the change state yet.
+        debounceCounter += deltaTime_ms;
+
+        if (debounceCounter >= DEBOUNCE_TIME_MS) {
+            // The state of the button has changed.
+
+            if (buttonPressed) {
+                // We just pressed the button.
+                abortPattern = true;
+            }
+
+            buttonState = buttonPressed;
+        }
     }
-    prevButton = buttomPressed;
+
+    if (buttonPressed == buttonState) {
+        // We stopped pushing the button
+        debounceCounter = 0;
+    }
 }
 
 void sendGcode() {
