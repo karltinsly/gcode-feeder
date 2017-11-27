@@ -38,8 +38,6 @@
 
 #include <SD.h>
 
-#include <list.h>
-
 File myFile;
 File root;
 boolean restart = true;
