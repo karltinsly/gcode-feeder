@@ -42,13 +42,14 @@ File myFile;
 File root;
 boolean restart = true;
 
-String patNum = "";
 String fileExt=".g";
 
-int pats[100];
-int patIdx = 0;
+const int MAX_FILES = 100;
+int patternOrder[MAX_FILES];
+int currentPattern = 0;
 int fileCount = 0;
-String numFiles;
+String filenames[MAX_FILES];
+String homeFilename = "";
 
 //settings for continuous pattern switches
 int contPin = 2; //pin for continous switch
@@ -69,7 +70,7 @@ void setup() {
     Serial1.begin(115200);      // serial1 streams gcode to the controller
 
     nextPat = false;            // we won't print the next pattern until pin 2 goes low
-    patIdx=0;                   // initialize the pattern array index - later incremented in openFileSD()
+    currentPattern = 0;         // initialize the pattern array index - later incremented in openFileSD()
 
     checkSD();                  // make sure SD is working
     delay(2000);                // needed this or would sometimes miss the homing cycle
@@ -79,7 +80,7 @@ void setup() {
 
     homeTable();                // opens the home.g file which homes and sets the zero points
     sendGcode();                // sends home.g
-    randomPats();               // fills the pats[] array and scrambles the index
+    randomPats();               // fills the patternOrder[] array and scrambles the index
 
 }
 
@@ -124,8 +125,8 @@ void checkSD() {
     delay(1000);
 }
 
-
-void countFiles(File dir, int numTabs) { // Counts files to be used in selecting from the array
+// Counts files to be used in selecting from the array
+void countFiles(File dir, int numTabs) {
     fileCount=0;
     while (true) {
         File entry =  dir.openNextFile();
@@ -133,58 +134,79 @@ void countFiles(File dir, int numTabs) { // Counts files to be used in selecting
             // no more files
             break;
         }
+
+        String filename(entry.name());
         if (entry.isDirectory()) {
             // Do nothing with directories
+        } else if (filename.startsWith("home.")) {
+            // Store this name, and move on.
+            homeFilename = entry.name();
         } else {
             // it's a file, add to the file count
+            filenames[fileCount] = entry.name();
+            Serial.println("Found pattern " + filename + "\tsz: " + String(entry.size()/1024) + "kB");
             fileCount++;
+            if (fileCount >= MAX_FILES) {
+                Serial.println("ERROR: Too many patterns! Overwriting the last one.");
+                // Go back one index. This will end in problems, but it will be more stable.
+                fileCount--;
+            }
         }
         entry.close();
     }
-    fileCount = fileCount-1; // removing one from the count because home.g won't be called
-    numFiles = fileCount; // numFiles is used to display the count
-    Serial.println("File count is " + numFiles); //this shows up in the serial monitor if hooked up to a computer
+    Serial.println("File count is " + String(fileCount)); //this shows up in the serial monitor if hooked up to a computer
 }
 
 
 void homeTable() {
-    String homeFile = "home.gc";
-    myFile = SD.open(homeFile, FILE_READ);
+    if (homeFilename.length() == 0) {
+        // There's no home file on the disk, don't do anything
+        Serial.println("No home.gc file found.");
+        return;
+    }
+
+    myFile = SD.open(homeFilename, FILE_READ);
     Serial.print("-- ");
     Serial.print("File : ");
-    Serial.print(homeFile);
+    Serial.print(homeFilename);
     Serial.print(" opened!");
     Serial.println(" --\n");
+    Serial.println("Hello" + Serial);
 }
 
 void randomPats() {
 
     //first fill array with sequential numbers
-    for (int i=0; i<100; ++i) {
-        pats[i]=i+1;
+    for (int i=0; i < MAX_FILES; ++i) {
+        patternOrder[i]=i;
     }
 
-    //randomize the array
     randomSeed(analogRead(0)); // this seeds the random number generator
-    for (int j= 0; j< fileCount; j++) {
+
+    // randomize the array. swap each item once with a new location.
+    for (int j=0; j< fileCount; j++) {
         int pos = random(fileCount);
-        int t = pats[j];
-        pats[j] = pats[pos];
-        pats[pos] = t;
+
+        // swap pos and j
+        int t = patternOrder[j];
+        patternOrder[j] = patternOrder[pos];
+        patternOrder[pos] = t;
     }
 }
 
 
 void openFileSD() {
 
-    String fileName = "";
     nextPat = false; // reset the next pattern variable
-    if (patIdx > fileCount) {
+    if (currentPattern >= fileCount) {
         // start over when we reach the end
-        patIdx=0;
+        currentPattern = 0;
     }
-    patNum = pats[patIdx]; // get a number from the scrambled array
-    fileName = patNum + fileExt; // construct the file name
+
+    // Fetch the next pattern id
+    int nextPatternNumber = patternOrder[currentPattern];
+    String fileName = filenames[nextPatternNumber];
+
     // open the file for printing
     myFile = SD.open(fileName, FILE_READ);
     Serial.print("-- ");
@@ -192,7 +214,7 @@ void openFileSD() {
     Serial.print(fileName);
     Serial.print(" opened!");
     Serial.println(" --\n");
-    patIdx = patIdx + 1; // set the index for the next pattern
+    currentPattern++; // Move to the next pattern
     delay(1000);
 }
 
