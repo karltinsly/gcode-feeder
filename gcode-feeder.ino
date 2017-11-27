@@ -38,12 +38,9 @@
 
 #include <SD.h>
 
-File myFile;
-File root;
-boolean restart = true;
+File currentFile;
 
-String fileExt=".g";
-
+// Storage for file information
 const int MAX_FILES = 100;
 int patternOrder[MAX_FILES];
 int currentPattern = 0;
@@ -52,60 +49,46 @@ String filenames[MAX_FILES];
 String homeFilename = "";
 
 //settings for continuous pattern switches
-int contPin = 2; //pin for continous switch
-
-boolean continuous = true;
-boolean nextPat = true;
-int contRead = HIGH;
-int patRead = HIGH;
-int prevCont; // the previous cont reading
-int prevPat; //
-long time = 0; //the last time the output pin was toggled;
-long debounce = 200; // debounce time
+const int CONTINUE_PIN = 2; //pin for continous switch
 
 // Aliases for serial ports
 #define DebugSerial Serial
 #define GrblSerial  Serial1
 
 void setup() {
+    // initialize pin for next pattern selector - notice the pullup
+    pinMode(CONTINUE_PIN, INPUT_PULLUP);
 
-    pinMode(2, INPUT_PULLUP);   // initialize pin for next pattern selector - notice the pullup
     DebugSerial.begin(115200);  // regular serial monitor for troubleshooting
-    GrblSerial.begin(115200);   // serial1 streams gcode to the controller
+    GrblSerial.begin(115200);   // streams gcode to the controller
 
-    nextPat = false;            // we won't print the next pattern until pin 2 goes low
     currentPattern = 0;         // initialize the pattern array index - later incremented in openFileSD()
 
     checkSD();                  // make sure SD is working
     delay(2000);                // needed this or would sometimes miss the homing cycle
 
-    root = SD.open("/");        // opening to count files
-    countFiles(root,0);         // counting files and saving as fileCount
+    countFiles(SD.open("/"),0); // counting files and saving as fileCount
 
-    homeTable();                // opens the home.g file which homes and sets the zero points
-    sendGcode();                // sends home.g
     randomizePatterns();        // fills the patternOrder[] array and scrambles the index
 
+    homeTable();                // opens home.gc file, and sends it.
 }
 
 void loop() {
 
-    contPat(); //function to see if pin 2 is low - don't print the next pattern unless it is
-
-    // nextPat is true if pin 2 is low
-    while(nextPat) {
-        openFileSD(); // iterates through the scrambled array, constructs the file name and opens it
-        sendGcode(); // sends the file to the controller
+    if(LOW == digitalRead(CONTINUE_PIN)) {
+        openFileSD(); // Opens the currentPattern
+        sendGcode();  // sends the file to the controller
+        nextPattern();
     }
+
 }
 
-//checks for low on pin 2
-void contPat() {
-    contRead = digitalRead(contPin); //read the toggle switch
-    if (contRead == LOW) {
-        nextPat = true;
-    } else {
-        nextPat = false;
+void nextPattern() {
+    currentPattern++;
+    if (currentPattern >= fileCount) {
+        // start over when we reach the end
+        currentPattern = 0;
     }
 }
 
@@ -169,14 +152,17 @@ void homeTable() {
         return;
     }
 
-    myFile = SD.open(homeFilename, FILE_READ);
+    currentFile = SD.open(homeFilename, FILE_READ);
     DebugSerial.print("-- ");
     DebugSerial.print("File : ");
     DebugSerial.print(homeFilename);
     DebugSerial.print(" opened!");
     DebugSerial.println(" --\n");
+    sendGcode();
 }
 
+// Randomize the indices. This will leave exactly one instance of each number in the array, and it
+// will leave them in some random order.
 void randomizePatterns() {
 
     //first fill array with sequential numbers
@@ -200,24 +186,17 @@ void randomizePatterns() {
 
 void openFileSD() {
 
-    nextPat = false; // reset the next pattern variable
-    if (currentPattern >= fileCount) {
-        // start over when we reach the end
-        currentPattern = 0;
-    }
-
     // Fetch the next pattern id
     int nextPatternNumber = patternOrder[currentPattern];
     String fileName = filenames[nextPatternNumber];
 
     // open the file for printing
-    myFile = SD.open(fileName, FILE_READ);
+    currentFile = SD.open(fileName, FILE_READ);
     DebugSerial.print("-- ");
     DebugSerial.print("File : ");
     DebugSerial.print(fileName);
     DebugSerial.print(" opened!");
     DebugSerial.println(" --\n");
-    currentPattern++; // Move to the next pattern
     delay(1000);
 }
 
@@ -261,11 +240,12 @@ void sendGcode() {
     delay(2);
     emptySerialBuf();
 
-    if(myFile) {
+    if(currentFile) {
         // until the file's end
-        while(myFile.available()) {
-            line = readLine(myFile);    // read line in gcode file
-            DebugSerial.print(line);         // send to serials
+        while(currentFile.available()) {
+
+            line = readLine(currentFile);        // read line in gcode file
+            DebugSerial.print(line);        // send to serials
             GrblSerial.print(line);
             DebugSerial.print(getSerial()); // print grbl return on serial
         }
@@ -274,7 +254,7 @@ void sendGcode() {
         fileError();
     }
 
-    myFile.close();
+    currentFile.close();
     DebugSerial.println("Finish!!\n");
     delay(2000);
 }
@@ -285,9 +265,8 @@ void sendGcode() {
     // to test without having to stream the whole gcode file
 
     DebugSerial.println("Printing the file.");
-    myFile.close();
+    currentFile.close();
     DebugSerial.println("Finish!\n");
-    nextPat = false;
     delay(2000);
     // End Testing code
 }
