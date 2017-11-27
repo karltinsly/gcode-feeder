@@ -205,9 +205,6 @@ void openFileSD() {
     delay(1000);
 }
 
-
-//All of the following code is unchanged (except for a little testing piece in sendGcode())
-
 void emptySerialBuf() {
     while(GrblSerial.available()) {
         GrblSerial.read();
