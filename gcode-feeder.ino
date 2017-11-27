@@ -78,7 +78,10 @@ void setup() {
 
 void loop() {
 
-    if(LOW == digitalRead(CONTINUE_PIN)) {
+    if(LOW == digitalRead(CONTINUE_PIN) || abortPattern) {
+        // clear the abort pattern bit.
+        abortPattern = false;
+
         openFileSD(); // Opens the currentPattern
         sendGcode();  // sends the file to the controller
         nextPattern();
@@ -305,7 +308,6 @@ void sendGcode() {
             if (abortPattern) {
                 // The user pressed the button!
                 DebugSerial.println("Pattern Aborted");
-                abortPattern = false;
                 break;
             }
 
