@@ -63,11 +63,15 @@ int prevPat; //
 long time = 0; //the last time the output pin was toggled;
 long debounce = 200; // debounce time
 
+// Aliases for serial ports
+#define DebugSerial Serial
+#define GrblSerial  Serial1
+
 void setup() {
 
     pinMode(2, INPUT_PULLUP);   // initialize pin for next pattern selector - notice the pullup
-    Serial.begin(115200);       // regular serial monitor for troubleshooting
-    Serial1.begin(115200);      // serial1 streams gcode to the controller
+    DebugSerial.begin(115200);  // regular serial monitor for troubleshooting
+    GrblSerial.begin(115200);   // serial1 streams gcode to the controller
 
     nextPat = false;            // we won't print the next pattern until pin 2 goes low
     currentPattern = 0;         // initialize the pattern array index - later incremented in openFileSD()
@@ -80,7 +84,7 @@ void setup() {
 
     homeTable();                // opens the home.g file which homes and sets the zero points
     sendGcode();                // sends home.g
-    randomPats();               // fills the patternOrder[] array and scrambles the index
+    randomizePatterns();        // fills the patternOrder[] array and scrambles the index
 
 }
 
@@ -118,10 +122,10 @@ void checkSD() {
     // digitalWrite(10,HIGH); //change the pin number to 53 for a mega
 
     while(!SD.begin(10)) {
-        Serial.println("Please insert SD card...\n");
+        DebugSerial.println("Please insert SD card...\n");
         delay(1000);
     }
-    Serial.println("SD card OK...\n");
+    DebugSerial.println("SD card OK...\n");
     delay(1000);
 }
 
@@ -144,37 +148,36 @@ void countFiles(File dir, int numTabs) {
         } else {
             // it's a file, add to the file count
             filenames[fileCount] = entry.name();
-            Serial.println("Found pattern " + filename + "\tsz: " + String(entry.size()/1024) + "kB");
+            DebugSerial.println("Found pattern " + filename + "\tsz: " + String(entry.size()/1024) + "kB");
             fileCount++;
             if (fileCount >= MAX_FILES) {
-                Serial.println("ERROR: Too many patterns! Overwriting the last one.");
+                DebugSerial.println("ERROR: Too many patterns! Overwriting the last one.");
                 // Go back one index. This will end in problems, but it will be more stable.
                 fileCount--;
             }
         }
         entry.close();
     }
-    Serial.println("File count is " + String(fileCount)); //this shows up in the serial monitor if hooked up to a computer
+    DebugSerial.println("File count is " + String(fileCount)); //this shows up in the serial monitor if hooked up to a computer
 }
 
 
 void homeTable() {
     if (homeFilename.length() == 0) {
         // There's no home file on the disk, don't do anything
-        Serial.println("No home.gc file found.");
+        DebugSerial.println("No home.gc file found.");
         return;
     }
 
     myFile = SD.open(homeFilename, FILE_READ);
-    Serial.print("-- ");
-    Serial.print("File : ");
-    Serial.print(homeFilename);
-    Serial.print(" opened!");
-    Serial.println(" --\n");
-    Serial.println("Hello" + Serial);
+    DebugSerial.print("-- ");
+    DebugSerial.print("File : ");
+    DebugSerial.print(homeFilename);
+    DebugSerial.print(" opened!");
+    DebugSerial.println(" --\n");
 }
 
-void randomPats() {
+void randomizePatterns() {
 
     //first fill array with sequential numbers
     for (int i=0; i < MAX_FILES; ++i) {
@@ -209,11 +212,11 @@ void openFileSD() {
 
     // open the file for printing
     myFile = SD.open(fileName, FILE_READ);
-    Serial.print("-- ");
-    Serial.print("File : ");
-    Serial.print(fileName);
-    Serial.print(" opened!");
-    Serial.println(" --\n");
+    DebugSerial.print("-- ");
+    DebugSerial.print("File : ");
+    DebugSerial.print(fileName);
+    DebugSerial.print(" opened!");
+    DebugSerial.println(" --\n");
     currentPattern++; // Move to the next pattern
     delay(1000);
 }
@@ -221,62 +224,31 @@ void openFileSD() {
 
 //All of the following code is unchanged (except for a little testing piece in sendGcode())
 
-void emptySerialBuf(int serialNum) {
-
-    //Empty Serial buffer
-    if(serialNum==0) {
-        while(Serial.available())
-            Serial.read();
-    }
-    else if(serialNum==1) {
-        while(Serial1.available())
-            Serial1.read();
+void emptySerialBuf() {
+    while(GrblSerial.available()) {
+        GrblSerial.read();
     }
 }
 
 // Wait for data on Serial
 // Argument serialNum for Serial number
-void waitSerial(int serialNum) {
-
-    boolean serialAvailable = false;
-
-    if(serialNum==0) {
-        while(!serialAvailable) {
-            if(Serial.available()) {
-                serialAvailable=true;
-            }
-        }
-    }
-    else if(serialNum==1) {
-        while(!serialAvailable) {
-            if(Serial1.available()) {
-                serialAvailable=true;
-            }
-        }
+void waitSerial() {
+    while(!GrblSerial.available()){
+        delay(1);
     }
 }
 
 // Return String  from serial line reading
-// Argument serialNum for Serial number
-String getSerial(int serialNum) {
+String getSerial() {
+
+    waitSerial();
 
     String inLine = "";
-    waitSerial(serialNum);
-
-    if(serialNum==0) {
-        while(Serial.available()) {
-            inLine += (char)Serial.read();
-            delay(2);
-        }
-        return inLine;
+    while(GrblSerial.available()) {
+        inLine += (char)GrblSerial.read();
+        delay(2);
     }
-    else if(serialNum==1) {
-        while(Serial1.available()) {
-            inLine += (char)Serial1.read();
-            delay(2);
-        }
-        return inLine;
-    }
+    return inLine;
 }
 
 void sendGcode() {
@@ -285,17 +257,17 @@ void sendGcode() {
 
     String line = "";
 
-    Serial1.print("\r\n\r\n");          //Wake up grbl
+    GrblSerial.print("\r\n\r\n");          //Wake up grbl
     delay(2);
-    emptySerialBuf(1);
+    emptySerialBuf();
 
     if(myFile) {
         // until the file's end
         while(myFile.available()) {
             line = readLine(myFile);    // read line in gcode file
-            Serial.print(line);         // send to serials
-            Serial1.print(line);
-            Serial.print(getSerial(1)); // print grbl return on serial
+            DebugSerial.print(line);         // send to serials
+            GrblSerial.print(line);
+            DebugSerial.print(getSerial()); // print grbl return on serial
         }
     }
     else {
@@ -303,7 +275,7 @@ void sendGcode() {
     }
 
     myFile.close();
-    Serial.println("Finish!!\n");
+    DebugSerial.println("Finish!!\n");
     delay(2000);
 }
 
@@ -312,9 +284,9 @@ void sendGcode() {
     // Testing Code - comment out the sendGcode stuff above and uncomment this
     // to test without having to stream the whole gcode file
 
-    Serial.println("Printing the file.");
+    DebugSerial.println("Printing the file.");
     myFile.close();
-    Serial.println("Finish!\n");
+    DebugSerial.println("Finish!\n");
     nextPat = false;
     delay(2000);
     // End Testing code
@@ -324,8 +296,8 @@ void sendGcode() {
 // For file open or read error
 void fileError() {
 
-    Serial.println("\n");
-    Serial.println("File Error !");
+    DebugSerial.println("\n");
+    DebugSerial.println("File Error !");
 }
 
 // return line from file reading
