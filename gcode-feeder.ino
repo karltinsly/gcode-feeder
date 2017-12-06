@@ -41,7 +41,7 @@
 File currentFile;
 
 // Storage for file information
-const int MAX_FILES = 100;
+const int MAX_FILES = 10;
 int patternOrder[MAX_FILES];
 int currentPattern = 0;
 int fileCount = 0;
