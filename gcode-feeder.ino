@@ -93,6 +93,7 @@ void nextPattern() {
     currentPattern++;
     if (currentPattern >= fileCount) {
         // start over when we reach the end
+        randomizePatterns();
         currentPattern = 0;
     }
 }
