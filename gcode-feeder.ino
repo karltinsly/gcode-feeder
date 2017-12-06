@@ -127,16 +127,22 @@ void countFiles(const File& dir) {
             break;
         }
 
-        String filename(entry.name());
+        String upper_filename(entry.name());
+        upper_filename.toUpperCase();
         if (entry.isDirectory()) {
             // Do nothing with directories
-        } else if (filename.startsWith("home.")) {
+        } else if (upper_filename.startsWith("HOME")) {
             // Store this name, and move on.
             homeFilename = entry.name();
+            DebugSerial.print("Found home ");
+            DebugSerial.print(entry.name());
+            DebugSerial.println("\tsz: " + String(entry.size()/1024) + "kB");
         } else {
             // it's a file, add to the file count
             filenames[fileCount] = entry.name();
-            DebugSerial.println("Found pattern " + filename + "\tsz: " + String(entry.size()/1024) + "kB");
+            DebugSerial.print("Found pattern ");
+            DebugSerial.print(entry.name());
+            DebugSerial.println("\tsz: " + String(entry.size()/1024) + "kB");
             fileCount++;
             if (fileCount >= MAX_FILES) {
                 DebugSerial.println("ERROR: Too many patterns! Overwriting the last one.");
