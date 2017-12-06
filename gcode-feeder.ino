@@ -69,7 +69,7 @@ void setup() {
     checkSD();                  // make sure SD is working
     delay(2000);                // needed this or would sometimes miss the homing cycle
 
-    countFiles(SD.open("/"),0); // counting files and saving as fileCount
+    countFiles(SD.open("/")); // counting files and saving as fileCount
 
     randomizePatterns();        // fills the patternOrder[] array and scrambles the index
 
@@ -118,7 +118,7 @@ void checkSD() {
 }
 
 // Counts files to be used in selecting from the array
-void countFiles(File dir, int numTabs) {
+void countFiles(const File& dir) {
     fileCount=0;
     while (true) {
         File entry =  dir.openNextFile();
